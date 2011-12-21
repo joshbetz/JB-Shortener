@@ -6,7 +6,7 @@ This plugin modifies the default short-url functionality to work with a custom s
 
 *Note*: This plugin no longer requires external hosting of shortening scripts unless you're in a multisite environment.
 
-#Setup
+##Setup
 
 1. Buy a short domain
 2. Upload `jb-shortener.php` to the `/wp-content/plugins/` directory
