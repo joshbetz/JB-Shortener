@@ -12,3 +12,5 @@ This plugin modifies the default short-url functionality to work with a custom s
 2. Upload `jb-shortener.php` to the `/wp-content/plugins/` directory
 3. Activate the plugin through the 'Plugins' menu in WordPress
 4. Update the "Short URL" in Options->General
+
+If you're running a multisite configuration, copy `sunrise.php` to the `wp-content` folder. If you're running the multisite domain mapping plugin and already have a file called `sunrise.php`, rename it to `dm_sunrise.php`.
