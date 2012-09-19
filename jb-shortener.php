@@ -24,9 +24,6 @@ class JB_Shortlinks {
 	function init() {
 		// Replace core shortlinks with JB shortlinks
 		add_filter( 'get_shortlink', array( $this, 'jb_shortlink' ), 10, 4 );
-
-		// Get the short URL for Twitter Tools
-		add_filter( 'tweet_blog_post_url', array( $this, 'jb_shortenter' ) );
 	}
 
 	/**
@@ -62,24 +59,6 @@ class JB_Shortlinks {
 		return esc_url( get_option( 'jb_shorturl' ) ) . '/' . self::base36( $id );
 	}
 
-	function jb_shortenter( $url ) {
-		$parts = explode( '/', $url );
-		$slug = $parts[ count( $parts ) - 1 ];
-
-		$args = array(
-			'name' => $slug,
-			'post_type' => 'post',
-			'post_status' => 'publish',
-			'numberposts' => 1
-		);
-
-		$post = get_posts( $args );
-		$id = self::base36( $post[0]->ID );
-		$shorturl = esc_url( get_option( 'jb_shorturl' ) );
-
-		return "$shorturl/$id";
-	}
-
 	/**
 	 * Add our short domain setting to the General settings page
 	 */
@@ -103,13 +82,13 @@ class JB_Shortlinks {
 	 */
 	function get_jb_shorturl() {
 		global $wpdb, $blog_id;
-		
+
 		if( ! is_multisite() )
 			return get_option( "jb_shorturl" );
-		
+
 		$wpdb->jbtable = $wpdb->base_prefix . 'jb_shortlinks';
 		$where = $wpdb->prepare( 'blog_id = %s', $blog_id );
-		
+
 		if( get_option('jb_shorturl') == $wpdb->get_var( "SELECT domain FROM {$wpdb->jbtable} WHERE {$where} ORDER BY CHAR_LENGTH(domain) DESC LIMIT 1" ) ) {
 			return get_option( 'jb_shorturl' );
 		} else {
@@ -127,7 +106,7 @@ class JB_Shortlinks {
 		global $wpdb, $blog_id;
 
 		$wpdb->jbtable = $wpdb->base_prefix . 'jb_shortlinks';
-		$where = $wpdb->prepare( 'blog_id = %s', $blog_id );  
+		$where = $wpdb->prepare( 'blog_id = %s', $blog_id );
 
 		if( $id = $wpdb->get_var( "SELECT id FROM {$wpdb->jbtable} WHERE {$where} ORDER BY CHAR_LENGTH(domain) DESC LIMIT 1" ) ) {
 			$wpdb->update( $wpdb->jbtable, array( 'domain' => $domain ), array( 'id' => $id ), '%s', '%d' );
@@ -168,11 +147,11 @@ class JB_Shortlinks {
 		$blog_id = get_current_blog_id();
 		$wpdb->jbtable = $wpdb->base_prefix . 'jb_shortlinks';
 		if( is_super_admin() || is_site_admin() ) {
-			$where = $wpdb->prepare( 'blog_id = %s', $blog_id );  
+			$where = $wpdb->prepare( 'blog_id = %s', $blog_id );
 			$deleted = $wpdb->query( "DELETE FROM {$wpdb->jbtable} WHERE {$where} LIMIT 1" );
 			if( $deleted ) {
 				echo '<div id="message" class="updated fade"><p><strong>Shortlinks plugin has been disabled</strong></p></div>';
-			} 
+			}
 		}
 	}
 
