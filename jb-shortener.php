@@ -22,8 +22,8 @@ class JB_Shortlinks {
 		// Replace core shortlinks with JB shortlinks
 		add_filter( 'get_shortlink', array( $this, 'shortlink' ), 10, 4 );
 
-		// Get the short URL for Twitter Tools
-		add_filter( 'tweet_blog_post_url', array( $this, 'shortener' ) );
+		// Get the short URL for Sharedaddy
+		add_filter( 'sharing_permalink', array( $this, 'sharing_permalink' ), 10, 3 );
 	}
 
 	/**
@@ -50,17 +50,8 @@ class JB_Shortlinks {
 		return esc_url( self::get_short_domain() ) . '/' . self::get_shorturl( $id );
 	}
 
-	function shortener( $url ) {
-		$slug = end( explode( '/', $url ) );
-
-		$args = array(
-			'name' => $slug,
-			'post_status' => 'publish',
-			'numberposts' => 1
-		);
-
-		$post = get_posts( $args );
-		$id = self::get_shorturl( $post[0]->ID );
+	function sharing_permalink( $url, $id, $service ) {
+		$id = self::get_shorturl( $id );
 		$shorturl = self::get_short_domain();
 
 		return esc_url( "$shorturl/$id" );
