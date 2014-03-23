@@ -9,164 +9,95 @@ Author URI: http://joshbetz.com
 */
 
 class JB_Shortlinks {
+	
+	const BASE = 36;
 
 	function __construct() {
 		add_action( 'init', array( $this, 'init' ) );
-		add_action( 'init', array( $this, 'jb_redirect' ), 1 );
-		add_action( 'admin_init', array( $this, 'jb_shorturl_settings' ) );
-		add_action( 'admin_notices', array( $this, 'admin_notices' ) );
-		if ( is_multisite() ) {
-			register_activation_hook( __FILE__, array( $this, 'jb_maybe_create_db' ) );
-			register_deactivation_hook( __FILE__, array( $this, 'jb_delete_db_entry' ) );
-		}
+		add_action( 'init', array( $this, 'redirect' ), 1 );
+		add_action( 'admin_init', array( $this, 'settings' ) );
 	}
 
 	function init() {
 		// Replace core shortlinks with JB shortlinks
-		add_filter( 'get_shortlink', array( $this, 'jb_shortlink' ), 10, 4 );
+		add_filter( 'get_shortlink', array( $this, 'shortlink' ), 10, 4 );
+
+		// Get the short URL for Twitter Tools
+		add_filter( 'tweet_blog_post_url', array( $this, 'shortener' ) );
 	}
 
 	/**
 	 * Redirect to the correct page based on the short url
 	 */
-	function jb_redirect() {
-		$jb_domain = esc_url( $_SERVER[ 'HTTP_HOST' ] );
+	function redirect() {
+		if ( ! self::get_short_domain() )
+			return;
 
-		if( $jb_domain == get_option( 'jb_shorturl' ) ) {
-			$token = trim( esc_url( $_SERVER[ 'REQUEST_URI' ] ), '/' );
-			$domain = esc_url( get_option( 'siteurl' ) );
+		$token = trim( esc_url( $_SERVER[ 'REQUEST_URI' ] ), '/' );
 
-			if ( ! empty( $token ) ) {
-				$id = intval( $token, 36 );
-				$permalink = get_permalink( $id );
+		if ( ! empty( $token ) ) {
+			$permalink = get_permalink( self::get_id( $token ) );
 
-				if( $permalink ) {
-					// Redirect to the permalink
-					wp_safe_redirect( $permalink, 301 );
-				} else {
-					// No post with that ID exists, go home
-					wp_safe_redirect( $domain, 302 );
-				}
+			// Redirect to the permalink
+			if( $permalink ) {
+				wp_safe_redirect( $permalink, 301 );
+				exit;
 			}
-			else
-				wp_safe_redirect( $domain, 301 );
-
-			exit;
 		}
 	}
 
-	function jb_shortlink( $shortlink, $id, $context, $allowslugs ) {
-		return esc_url( get_option( 'jb_shorturl' ) ) . '/' . self::base36( $id );
+	function shortlink( $shortlink, $id, $context, $allowslugs ) {
+		return esc_url( self::get_short_domain() ) . '/' . self::get_shorturl( $id );
+	}
+
+	function shortener( $url ) {
+		$slug = end( explode( '/', $url ) );
+
+		$args = array(
+			'name' => $slug,
+			'post_status' => 'publish',
+			'numberposts' => 1
+		);
+
+		$post = get_posts( $args );
+		$id = self::get_shorturl( $post[0]->ID );
+		$shorturl = self::get_short_domain();
+
+		return esc_url( "$shorturl/$id" );
 	}
 
 	/**
 	 * Add our short domain setting to the General settings page
 	 */
-	function jb_shorturl_settings() {
-		add_settings_field( 'jb_shorturl', __( 'Short URL' ), array( $this, 'jb_settings_callback' ), 'general', 'default', array( 'label_for' => 'jb_shorturl' ) );
-		register_setting( 'general', 'jb_shorturl', 'esc_url' );
+	function settings() {
+		add_settings_field( 'jb_shorturl', __( 'Short URL' ), array( $this, 'display_setting' ), 'general', 'default', array( 'label_for' => 'jb_shorturl' ) );
+		register_setting( 'general', 'jb_shorturl', array( __CLASS__, 'sanitize_url' ) );
 	}
 
 	/**
 	 * Output a field to define the short domain
 	 */
-	function jb_settings_callback() {
-		echo '<input name="jb_shorturl" id="jb_shorturl" type="text" value="' . $this->get_jb_shorturl() . '" class="code regular-text"><p class="description">The custom short url for your site</p>';
+	function display_setting() {
+		echo '<input name="jb_shorturl" id="jb_shorturl" type="text" value="' . self::get_short_domain() . '" class="code regular-text"><p class="description">The custom short url for your site</p>';
 	}
-
-	/**
-	 * Get the short url
-	 *
-	 * If we're in mulisite, look it up in the extra database table.
-	 * If we're not in multisite, just use get_option
-	 */
-	function get_jb_shorturl() {
-		global $wpdb, $blog_id;
-
-		if( ! is_multisite() )
-			return get_option( "jb_shorturl" );
-
-		$wpdb->jbtable = $wpdb->base_prefix . 'jb_shortlinks';
-		$where = $wpdb->prepare( 'blog_id = %s', $blog_id );
-
-		if( get_option('jb_shorturl') == $wpdb->get_var( "SELECT domain FROM {$wpdb->jbtable} WHERE {$where} ORDER BY CHAR_LENGTH(domain) DESC LIMIT 1" ) ) {
-			return get_option( 'jb_shorturl' );
-		} else {
-			$this->update_jb_shorturl( get_option( 'jb_shorturl' ) );
-		}
+	
+	static function get_short_domain() {
+		return get_option( 'jb_shorturl' );
 	}
-
-	/**
-	 * Update the short domain in the extra table
-	 *
-	 * This only gets called if we're in multisite because
-	 * we're using a standard options page otherwise
-	 */
-	function update_jb_shorturl( $domain ) {
-		global $wpdb, $blog_id;
-
-		$wpdb->jbtable = $wpdb->base_prefix . 'jb_shortlinks';
-		$where = $wpdb->prepare( 'blog_id = %s', $blog_id );
-
-		if( $id = $wpdb->get_var( "SELECT id FROM {$wpdb->jbtable} WHERE {$where} ORDER BY CHAR_LENGTH(domain) DESC LIMIT 1" ) ) {
-			$wpdb->update( $wpdb->jbtable, array( 'domain' => $domain ), array( 'id' => $id ), '%s', '%d' );
-		} else {
-			$wpdb->insert( $wpdb->jbtable, array( 'blog_id' => $blog_id, 'domain' => $domain ), array( '%d', '%s' ) );
-		}
-	}
-
-	/**
-	 * Create a new database table on install if we're in multisite
-	 */
-	function jb_maybe_create_db() {
-		global $wpdb;
-
-		$wpdb->jbtable = $wpdb->base_prefix . 'jb_shortlinks';
-		if ( is_super_admin() || is_site_admin() ) {
-			if ( $wpdb->get_var( "SHOW TABLES LIKE '{$wpdb->jbtable}'" ) != $wpdb->jbtable ) {
-				$created = $wpdb->query( "CREATE TABLE IF NOT EXISTS `{$wpdb->jbtable}` (
-					`id` bigint(20) NOT NULL auto_increment,
-					`blog_id` bigint(20) NOT NULL,
-					`domain` varchar(255) NOT NULL,
-					PRIMARY KEY  (`id`),
-					KEY `blog_id` (`blog_id`,`domain`)
-					);" );
-				if ( $created ) {
-					'<div id="message" class="updated fade"><p><strong>Shortlink database table created</strong></p></div>';
-				}
-			}
-		}
-	}
-
-	/**
-	 * Delete the extra database table on uninstall if we're in multisite
-	 */
-	function jb_delete_db_entry() {
-		global $wpdb;
-
-		$blog_id = get_current_blog_id();
-		$wpdb->jbtable = $wpdb->base_prefix . 'jb_shortlinks';
-		if( is_super_admin() || is_site_admin() ) {
-			$where = $wpdb->prepare( 'blog_id = %s', $blog_id );
-			$deleted = $wpdb->query( "DELETE FROM {$wpdb->jbtable} WHERE {$where} LIMIT 1" );
-			if( $deleted ) {
-				echo '<div id="message" class="updated fade"><p><strong>Shortlinks plugin has been disabled</strong></p></div>';
-			}
-		}
-	}
-
-	function admin_notices(){
-		if ( get_option( 'jb_shorturl' ) == '' )
-			echo '<div class="updated">
-				<p>No short domain has been specified.</p>
-			</div>';
+	
+	static function sanitize_url( $url ) {
+		return esc_url_raw( trim( $url, '/' ) );
 	}
 
 	/**
 	 * Converts a base 10 number to base36
 	 */
-	static function base36( $number ) {
-		return base_convert( $number, 10, 36 );
+	static function get_shorturl( $number ) {
+		return base_convert( $number, 10, self::BASE );
+	}
+	
+	static function get_id( $number ) {
+		return intval( $number, self::BASE );
 	}
 
 }
